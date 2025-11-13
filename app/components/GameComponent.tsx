@@ -5,11 +5,18 @@ import type Phaser from "phaser";
 import Image from "next/image";
 import OreSprite from "@/types/OreSprite";
 import OreType from "@/types/OreType";
-import { calculateUpgradeCost } from "@/utils/lib";
+import { calculateUpgradeCost, calculateWorkerHireCost } from "@/utils/lib";
+import {
+  createDefaultGameState,
+  GameState,
+  Worker,
+  OreKey,
+  getTotalOreCount,
+} from "../game/utils";
 
-// Sidebar icon component
 function OreIcon({ oreName, scale = 4 }: { oreName: string; scale?: number }) {
   return (
+    /*eslint-disable*/
     <img
       src={`/icons/${oreName}.png`}
       width={16 * scale}
@@ -19,58 +26,58 @@ function OreIcon({ oreName, scale = 4 }: { oreName: string; scale?: number }) {
   );
 }
 
-type OreKey = "ore1" | "ore2" | "ore3" | "ore4" | "ore5" | "ore6";
+const loadSavedGame = (): GameState => {
+  if (typeof window === "undefined") return createDefaultGameState();
 
-interface Worker {
-  id: number;
-  lastMineTime: number;
-}
+  const saved = localStorage.getItem("gameState");
+  if (!saved) return createDefaultGameState();
 
-interface GameState {
-  player: { coins: number };
-  pickaxe: { level: number; speed: number };
-  workers: Worker[];
-  ores: Record<
-    OreKey,
-    { row: number; count: number; icon: string; price: number }
-  >;
-}
+  try {
+    const parsed = JSON.parse(saved) as Partial<GameState>;
+
+    if (!parsed.workerStamina) parsed.workerStamina = { level: 1 };
+    if (!parsed.workerCycle) {
+      parsed.workerCycle = { isResting: false, phaseStartTime: Date.now() };
+    }
+
+    parsed.workers =
+      parsed.workers?.map((worker) => ({
+        ...worker,
+        lastMineTime: worker.lastMineTime ?? 0,
+      })) ?? [];
+
+    const defaults = createDefaultGameState();
+
+    return {
+      ...defaults,
+      ...parsed,
+      ores: {
+        ...defaults.ores,
+        ...parsed.ores,
+      },
+    };
+  } catch (error) {
+    console.warn("Failed to parse saved gameState:", error);
+    return createDefaultGameState();
+  }
+};
 
 export default function GameComponent() {
   const gameRef = useRef<Phaser.Game | null>(null);
   const mountedRef = useRef(false);
   const gameStateRef = useRef<GameState | null>(null);
-
-  const [game, setGame] = useState<GameState>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("gameState");
-      if (saved) {
-        try {
-          return JSON.parse(saved) as GameState;
-        } catch (e) {
-          console.warn("Failed to parse saved gameState:", e);
-        }
-      }
-    }
-
-    return {
-      player: { coins: 0 },
-      pickaxe: { level: 0, speed: 800 },
-      ores: {
-        ore1: { row: 0, count: 0, icon: "purple", price: 5 },
-        ore2: { row: 1, count: 0, icon: "green", price: 10 },
-        ore3: { row: 2, count: 0, icon: "black", price: 25 },
-        ore4: { row: 3, count: 0, icon: "red", price: 50 },
-        ore5: { row: 4, count: 0, icon: "diamond", price: 100 },
-        ore6: { row: 5, count: 0, icon: "red_shade", price: 250 },
-      },
-      workers: [],
-    };
+  const [workerStatus, setWorkerStatus] = useState<{
+    isWorking: boolean;
+    timeRemaining: number;
+  }>({
+    isWorking: true,
+    timeRemaining: 0,
   });
+
+  const [game, setGame] = useState<GameState>(loadSavedGame);
 
   console.log(game);
 
-  // keep live state in ref for Phaser
   useEffect(() => {
     gameStateRef.current = game;
   }, [game]);
@@ -80,13 +87,31 @@ export default function GameComponent() {
     localStorage.setItem("gameState", JSON.stringify(game));
   }, [game]);
 
+  const upgradeWorkerStamina = () => {
+    setGame((prev) => {
+      const cost = 5000 * Math.pow(2, prev.workerStamina.level - 1);
+      if (prev.player.coins < cost) return prev;
+
+      return {
+        ...prev,
+        workerStamina: {
+          level: prev.workerStamina.level + 1,
+        },
+        player: {
+          ...prev.player,
+          coins: prev.player.coins - cost,
+        },
+      };
+    });
+  };
+
   const upgradePickaxe = () => {
     setGame((prev) => {
       const cost = calculateUpgradeCost(prev.pickaxe.level);
       if (prev.player.coins < cost) return prev;
 
       const newLevel = prev.pickaxe.level + 1;
-      const newSpeed = 800 / (newLevel + 1); // faster per level
+      const newSpeed = prev.pickaxe.speed / 1.2;
 
       return {
         ...prev,
@@ -103,10 +128,33 @@ export default function GameComponent() {
     });
   };
 
+  const upgradeStorage = () => {
+    setGame((prev) => {
+      const cost = calculateUpgradeCost(prev.storage.level);
+      if (prev.player.coins < cost) return prev;
+
+      const newLevel = prev.storage.level + 1;
+      const newStorageAmount = prev.storage.cap + 50;
+
+      return {
+        ...prev,
+        storage: {
+          ...prev.storage,
+          level: newLevel,
+          cap: newStorageAmount,
+        },
+        player: {
+          ...prev.player,
+          coins: prev.player.coins - cost,
+        },
+      };
+    });
+  };
+
   const hireWorker = () => {
     setGame((prev) => {
       if (prev.workers.length >= 5) return prev;
-      const cost = 200 + 200 * game.workers.length;
+      const cost = calculateWorkerHireCost(game.workers.length);
       if (prev.player.coins < cost) return prev;
 
       const newWorker: Worker = {
@@ -169,8 +217,6 @@ export default function GameComponent() {
         pickaxe!: Phaser.GameObjects.Image;
         isMining = false;
         lastMineTime = 0;
-        workerData: Record<number, { lastMine: number }> = {};
-
         constructor() {
           super("MainScene");
         }
@@ -238,6 +284,90 @@ export default function GameComponent() {
           }
         }
 
+        getDurations(state: GameState) {
+          const workDuration = state.workerStamina.level * 5 * 60 * 1000;
+          const restDuration = 15 * 60 * 1000;
+          return { workDuration, restDuration };
+        }
+
+        advanceCycle(
+          state: GameState,
+          now: number,
+          durations: { workDuration: number; restDuration: number }
+        ) {
+          const cycle = state.workerCycle ?? {
+            isResting: false,
+            phaseStartTime: now,
+          };
+          const elapsed = now - cycle.phaseStartTime;
+          let changed = false;
+
+          if (!cycle.isResting && elapsed >= durations.workDuration) {
+            cycle.isResting = true;
+            cycle.phaseStartTime = now;
+            changed = true;
+          } else if (cycle.isResting && elapsed >= durations.restDuration) {
+            cycle.isResting = false;
+            cycle.phaseStartTime = now;
+            changed = true;
+          }
+
+          return { cycle, changed };
+        }
+
+        updateWorkerStatus(
+          state: GameState,
+          cycle: GameState["workerCycle"],
+          now: number,
+          durations: { workDuration: number; restDuration: number }
+        ) {
+          if (state.workers.length === 0) return;
+
+          const currentDuration = cycle.isResting
+            ? durations.restDuration
+            : durations.workDuration;
+          const remaining = Math.max(
+            0,
+            currentDuration - (now - cycle.phaseStartTime)
+          );
+
+          setWorkerStatus({
+            isWorking: !cycle.isResting,
+            timeRemaining: remaining,
+          });
+        }
+
+        processWorkers(
+          state: GameState,
+          cycle: GameState["workerCycle"],
+          now: number
+        ) {
+          const workerSnapshots = state.workers.map((worker) => ({
+            ...worker,
+          }));
+          const oreGains: Partial<Record<OreKey, number>> = {};
+          let workersChanged = false;
+
+          const totalOres = getTotalOreCount(state);
+          if (totalOres >= state.storage.cap)
+            return { workerSnapshots, oreGains, workersChanged };
+
+          if (!cycle.isResting) {
+            for (const worker of workerSnapshots) {
+              if (now > worker.lastMineTime + state.pickaxe.speed * 2) {
+                worker.lastMineTime = now;
+                const oreType = this.getWeightedRandomOre(["ore1", "ore2"]);
+                const oreKey = oreType.name as OreKey;
+
+                oreGains[oreKey] = (oreGains[oreKey] ?? 0) + 1;
+                workersChanged = true;
+              }
+            }
+          }
+
+          return { workerSnapshots, oreGains, workersChanged };
+        }
+
         update(time: number) {
           const pointer = this.input.activePointer;
           const state = gameStateRef.current;
@@ -253,33 +383,59 @@ export default function GameComponent() {
             this.mineOresUnderPointer(pointer.worldX, pointer.worldY);
           }
 
-          if (!this.workerData) this.workerData = {};
+          const now = Date.now();
+          const durations = this.getDurations(state);
+          const { cycle, changed: cycleChanged } = this.advanceCycle(
+            state,
+            now,
+            durations
+          );
+          this.updateWorkerStatus(state, cycle, now, durations);
 
-          for (const worker of state.workers) {
-            if (!this.workerData[worker.id])
-              this.workerData[worker.id] = { lastMine: 0 };
+          const { workerSnapshots, oreGains, workersChanged } =
+            this.processWorkers(state, cycle, now);
 
-            const w = this.workerData[worker.id];
+          if (workersChanged || cycleChanged || Object.keys(oreGains).length) {
+            const workerMap = new Map(workerSnapshots.map((w) => [w.id, w]));
+            setGame((prev) => {
+              const updatedWorkers = prev.workers.map((worker) => {
+                const updated = workerMap.get(worker.id);
+                return updated
+                  ? {
+                      ...worker,
+                      lastMineTime: updated.lastMineTime,
+                    }
+                  : worker;
+              });
 
-            if (time > w.lastMine + state.pickaxe.speed * 2) {
-              // 2x slower than player
-              w.lastMine = time;
+              const oreKeys = Object.keys(oreGains) as OreKey[];
 
-              const oreType = this.getWeightedRandomOre(["ore1", "ore2"]);
-              const oreKey = oreType.name as OreKey;
+              const updatedOres =
+                oreKeys.length === 0
+                  ? prev.ores
+                  : (Object.keys(prev.ores) as OreKey[]).reduce((acc, key) => {
+                      const gain = oreGains[key] ?? 0;
+                      acc[key] = gain
+                        ? {
+                            ...prev.ores[key],
+                            count: prev.ores[key].count + gain,
+                          }
+                        : prev.ores[key];
+                      return acc;
+                    }, {} as GameState["ores"]);
 
-              // update React state for ores only
-              setGame((prev) => ({
+              return {
                 ...prev,
-                ores: {
-                  ...prev.ores,
-                  [oreKey]: {
-                    ...prev.ores[oreKey],
-                    count: prev.ores[oreKey].count + 1,
-                  },
-                },
-              }));
-            }
+                workers: updatedWorkers,
+                ores: updatedOres,
+                workerCycle: cycleChanged
+                  ? {
+                      isResting: cycle.isResting,
+                      phaseStartTime: cycle.phaseStartTime,
+                    }
+                  : prev.workerCycle,
+              };
+            });
           }
         }
 
@@ -312,6 +468,25 @@ export default function GameComponent() {
         }
 
         mineOre(ore: OreSprite) {
+          const state = gameStateRef.current;
+          if (!state) return;
+
+          const totalOres = getTotalOreCount(state);
+          if (totalOres >= state.storage.cap) {
+            const txt = this.add
+              .text(ore.x, ore.y - 40, "Storage Full!", {
+                font: "16px Arial",
+                color: "#ff4444",
+              })
+              .setDepth(100);
+
+            this.time.addEvent({
+              delay: 1000,
+              callback: () => txt.destroy(),
+            });
+            return;
+          }
+
           this.tweens.add({
             targets: ore,
             yoyo: true,
@@ -323,16 +498,20 @@ export default function GameComponent() {
             const oreType = this.oreTypes[ore.typeRow];
             const oreKey = oreType.name as OreKey;
 
-            setGame((prev: GameState) => ({
-              ...prev,
-              ores: {
-                ...prev.ores,
-                [oreKey]: {
-                  ...prev.ores[oreKey],
-                  count: prev.ores[oreKey].count + 1,
+            setGame((prev: GameState) => {
+              // check again in React state to avoid async overflow
+              if (getTotalOreCount(prev) >= prev.storage.cap) return prev;
+              return {
+                ...prev,
+                ores: {
+                  ...prev.ores,
+                  [oreKey]: {
+                    ...prev.ores[oreKey],
+                    count: prev.ores[oreKey].count + 1,
+                  },
                 },
-              },
-            }));
+              };
+            });
 
             const txt = this.add.text(ore.x, ore.y - 40, "+1", {
               font: "18px Arial",
@@ -377,10 +556,17 @@ export default function GameComponent() {
     };
   }, []);
 
+  const formatTime = (ms: number) => {
+    const totalSeconds = Math.ceil(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
   return (
-    <div className="relative w-full h-full flex items-center justify-center">
+    <div className="relative w-full h-full flex items-center justify-center gap-10">
       <div id="phaser-container" className="w-[800px] h-[800px]" />
-      <div className="absolute top-4 left-4 text-white font-mono space-y-1">
+      <div className="text-white font-mono space-y-1 bg-black/70 p-4">
         <div>
           <div className="text-2xl font-bold mb-2">Ore Collection</div>
           {Object.entries(game.ores).map(([key, ore]) => (
@@ -402,49 +588,127 @@ export default function GameComponent() {
             Coins: {game.player.coins}{" "}
             <Image src="/icons/coin.png" alt="" width={20} height={20} />
           </div>
-          <div className="border border-white p-3 mt-5">
-            <div className="flex items-center gap-2">
-              <p>Lvl.{game.pickaxe.level}</p>
-              <Image src="/icons/pickaxe.png" alt="" width={20} height={20} />
-              <button
-                onClick={upgradePickaxe}
-                disabled={
-                  calculateUpgradeCost(game.pickaxe.level) > game.player.coins
-                }
-                className="bg-green-600 p-2 px-4 ml-2 cursor-pointer flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                Upgrade {calculateUpgradeCost(game.pickaxe.level)}{" "}
-                <Image src="/icons/coin.png" alt="" width={20} height={20} />
-              </button>
-            </div>
+
+          <div className="flex items-center gap-2">
+            Storage: {getTotalOreCount(game)}/{game.storage.cap}{" "}
+            <Image src="/icons/ore_storage.png" alt="" width={20} height={20} />
           </div>
 
-          <div className="border border-white p-3 mt-5">
-            <div className="flex flex-col gap-2">
+          <div className="max-h-96 overflow-y-scroll">
+            <div className="border border-white p-3 mt-5">
               <div className="flex items-center gap-2">
-                <p>Workers: {game.workers.length}/5</p>
+                <p>Lvl.{game.pickaxe.level}</p>
+                <Image src="/icons/pickaxe.png" alt="" width={40} height={40} />
                 <button
-                  onClick={hireWorker}
+                  onClick={upgradePickaxe}
                   disabled={
-                    game.workers.length >= 5 ||
-                    game.player.coins < 200 + 200 * game.workers.length
+                    calculateUpgradeCost(game.pickaxe.level) > game.player.coins
                   }
                   className="bg-green-600 p-2 px-4 ml-2 cursor-pointer flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  Hire {200 + 200 * game.workers.length}{" "}
+                  Upgrade {calculateUpgradeCost(game.pickaxe.level)}{" "}
                   <Image src="/icons/coin.png" alt="" width={20} height={20} />
                 </button>
               </div>
-              <div className="flex gap-2 mt-2">
-                {game.workers.map((worker) => (
-                  <Image
-                    key={worker.id}
-                    src="/icons/pickaxe.png"
-                    alt="worker"
-                    width={24}
-                    height={24}
-                  />
-                ))}
+            </div>
+
+            <div className="border border-white p-3 mt-5">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <p>Workers: {game.workers.length}/5</p>
+                  <button
+                    onClick={hireWorker}
+                    disabled={
+                      game.workers.length >= 5 ||
+                      game.player.coins <
+                        calculateWorkerHireCost(game.workers.length)
+                    }
+                    className="bg-green-600 p-2 px-4 ml-2 cursor-pointer flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    Hire {calculateWorkerHireCost(game.workers.length)}{" "}
+                    <Image
+                      src="/icons/coin.png"
+                      alt=""
+                      width={20}
+                      height={20}
+                    />
+                  </button>
+                </div>
+                {game.workers.length > 0 && (
+                  <div className="mt-2 text-sm">
+                    <p
+                      className={
+                        workerStatus.isWorking
+                          ? "text-green-400"
+                          : "text-yellow-400"
+                      }
+                    >
+                      {workerStatus.isWorking ? "⛏️ Working" : "💤 Resting"}
+                    </p>
+                    <p className="text-xs opacity-80">
+                      {workerStatus.isWorking
+                        ? "Work ends in: "
+                        : "Rest ends in: "}
+                      {formatTime(workerStatus.timeRemaining)}
+                    </p>
+                  </div>
+                )}
+                <div className="flex gap-2 mt-2">
+                  {game.workers.map((worker) => (
+                    <Image
+                      key={worker.id}
+                      src="/icons/pickaxe.png"
+                      alt="worker"
+                      width={30}
+                      height={30}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-white p-3 mt-5">
+              <div className="flex flex-col gap-2">
+                <p className="text-sm mb-1">
+                  Worker Stamina Lvl.{game.workerStamina.level}
+                </p>
+                <p className="text-xs opacity-80">
+                  Work: {game.workerStamina.level * 5}min | Rest: 15min
+                </p>
+                <button
+                  onClick={upgradeWorkerStamina}
+                  disabled={
+                    game.player.coins <
+                    5000 * Math.pow(2, game.workerStamina.level - 1)
+                  }
+                  className="bg-green-600 p-2 px-4 cursor-pointer flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  Upgrade {5000 * Math.pow(2, game.workerStamina.level - 1)}{" "}
+                  <Image src="/icons/coin.png" alt="" width={20} height={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="border border-white p-3 mt-5">
+              <div className="flex items-center gap-2">
+                <p>Lvl.{game.storage.level}</p>
+                <Image
+                  src="/icons/ore_storage.png"
+                  alt=""
+                  width={40}
+                  height={40}
+                />
+                <p>Storage</p>
+                <button
+                  onClick={upgradeStorage}
+                  disabled={
+                    calculateUpgradeCost(game.storage.level) > game.player.coins
+                  }
+                  className="bg-green-600 p-2 px-4 ml-2 cursor-pointer flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  Upgrade {calculateUpgradeCost(game.storage.level)}{" "}
+                  <Image src="/icons/coin.png" alt="" width={20} height={20} />
+                </button>
               </div>
             </div>
           </div>
