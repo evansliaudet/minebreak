@@ -5,13 +5,17 @@ import type Phaser from "phaser";
 import Image from "next/image";
 import OreSprite from "@/types/OreSprite";
 import OreType from "@/types/OreType";
-import { calculateUpgradeCost, calculateWorkerHireCost } from "@/utils/lib";
+import {
+  calculateUpgradeCost,
+  calculateWorkerHireCost,
+  getTotalOreCount,
+} from "@/utils/lib";
 import {
   createDefaultGameState,
   GameState,
   Worker,
   OreKey,
-  getTotalOreCount,
+  SmoltenOreKey,
 } from "../game/utils";
 
 function OreIcon({ oreName, scale = 4 }: { oreName: string; scale?: number }) {
@@ -39,6 +43,18 @@ const loadSavedGame = (): GameState => {
     if (!parsed.workerCycle) {
       parsed.workerCycle = { isResting: false, phaseStartTime: Date.now() };
     }
+    if (!parsed.furnace) {
+      parsed.furnace = {
+        level: 1,
+        maxLevel: 10,
+        currentOre: null,
+        smeltStartTime: null,
+        smeltDuration: 3000,
+      };
+    }
+    if (!parsed.smoltenOres) {
+      parsed.smoltenOres = createDefaultGameState().smoltenOres;
+    }
 
     parsed.workers =
       parsed.workers?.map((worker) => ({
@@ -54,6 +70,10 @@ const loadSavedGame = (): GameState => {
       ores: {
         ...defaults.ores,
         ...parsed.ores,
+      },
+      smoltenOres: {
+        ...defaults.smoltenOres,
+        ...parsed.smoltenOres,
       },
     };
   } catch (error) {
@@ -75,8 +95,7 @@ export default function GameComponent() {
   });
 
   const [game, setGame] = useState<GameState>(loadSavedGame);
-
-  console.log(game);
+  const [smeltProgress, setSmeltProgress] = useState(0);
 
   useEffect(() => {
     gameStateRef.current = game;
@@ -86,6 +105,79 @@ export default function GameComponent() {
     if (typeof window === "undefined") return;
     localStorage.setItem("gameState", JSON.stringify(game));
   }, [game]);
+
+  // Get next ore to smelt (rarest first)
+  const getNextOreToSmelt = (state: GameState): OreKey | null => {
+    const oreOrder: OreKey[] = ["ore6", "ore5", "ore4", "ore3", "ore2", "ore1"];
+    for (const oreKey of oreOrder) {
+      if (state.ores[oreKey].count > 0) {
+        return oreKey;
+      }
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+
+      setGame((prev) => {
+        const furnace = prev.furnace;
+
+        if (furnace.currentOre && furnace.smeltStartTime) {
+          const elapsed = now - furnace.smeltStartTime;
+          const progress = Math.min(elapsed / furnace.smeltDuration, 1);
+          setSmeltProgress(progress);
+
+          if (elapsed >= furnace.smeltDuration) {
+            const smoltenKey = `smolten_${furnace.currentOre}` as SmoltenOreKey;
+
+            return {
+              ...prev,
+              smoltenOres: {
+                ...prev.smoltenOres,
+                [smoltenKey]: {
+                  ...prev.smoltenOres[smoltenKey],
+                  count: prev.smoltenOres[smoltenKey].count + 1,
+                },
+              },
+              furnace: {
+                ...furnace,
+                currentOre: null,
+                smeltStartTime: null,
+              },
+            };
+          }
+          return prev;
+        }
+
+        const nextOre = getNextOreToSmelt(prev);
+        if (nextOre) {
+          setSmeltProgress(0);
+          return {
+            ...prev,
+            ores: {
+              ...prev.ores,
+              [nextOre]: {
+                ...prev.ores[nextOre],
+                count: prev.ores[nextOre].count - 1,
+              },
+            },
+            furnace: {
+              ...furnace,
+              currentOre: nextOre,
+              smeltStartTime: now,
+            },
+          };
+        }
+
+        setSmeltProgress(0);
+        return prev;
+      });
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const upgradeWorkerStamina = () => {
     setGame((prev) => {
@@ -129,6 +221,10 @@ export default function GameComponent() {
   };
 
   const upgradeStorage = () => {
+    if (game.storage.level == game.storage.maxLevel) {
+      return;
+    }
+
     setGame((prev) => {
       const cost = calculateUpgradeCost(prev.storage.level);
       if (prev.player.coins < cost) return prev;
@@ -142,6 +238,33 @@ export default function GameComponent() {
           ...prev.storage,
           level: newLevel,
           cap: newStorageAmount,
+        },
+        player: {
+          ...prev.player,
+          coins: prev.player.coins - cost,
+        },
+      };
+    });
+  };
+
+  const upgradeFurnace = () => {
+    if (game.furnace.level == game.furnace.maxLevel) {
+      return;
+    }
+
+    setGame((prev) => {
+      const cost = calculateUpgradeCost(prev.furnace.level) * 2;
+      if (prev.player.coins < cost) return prev;
+
+      const newLevel = prev.furnace.level + 1;
+      const newDuration = Math.max(500, 3000 / (newLevel * 0.8));
+
+      return {
+        ...prev,
+        furnace: {
+          ...prev.furnace,
+          level: newLevel,
+          smeltDuration: newDuration,
         },
         player: {
           ...prev.player,
@@ -175,14 +298,17 @@ export default function GameComponent() {
 
   const sellOres = () => {
     setGame((prev) => {
-      const totalCoins = Object.values(prev.ores).reduce(
+      const totalCoins = Object.values(prev.smoltenOres).reduce(
         (sum, ore) => sum + ore.count * ore.price,
         0
       );
 
-      const resetOres = Object.fromEntries(
-        Object.entries(prev.ores).map(([k, ore]) => [k, { ...ore, count: 0 }])
-      ) as GameState["ores"];
+      const resetSmoltenOres = Object.fromEntries(
+        Object.entries(prev.smoltenOres).map(([k, ore]) => [
+          k,
+          { ...ore, count: 0 },
+        ])
+      ) as GameState["smoltenOres"];
 
       return {
         ...prev,
@@ -190,7 +316,7 @@ export default function GameComponent() {
           ...prev.player,
           coins: prev.player.coins + totalCoins,
         },
-        ores: resetOres,
+        smoltenOres: resetSmoltenOres,
       };
     });
   };
@@ -499,7 +625,6 @@ export default function GameComponent() {
             const oreKey = oreType.name as OreKey;
 
             setGame((prev: GameState) => {
-              // check again in React state to avoid async overflow
               if (getTotalOreCount(prev) >= prev.storage.cap) return prev;
               return {
                 ...prev,
@@ -567,20 +692,30 @@ export default function GameComponent() {
     <div className="relative w-full h-full flex items-center justify-center gap-10">
       <div id="phaser-container" className="w-[800px] h-[800px]" />
       <div className="text-white font-mono space-y-1 bg-black/70 p-4">
-        <div>
-          <div className="text-2xl font-bold mb-2">Ore Collection</div>
-          {Object.entries(game.ores).map(([key, ore]) => (
-            <div key={key} className="flex items-center gap-2">
-              <OreIcon scale={2} oreName={ore.icon} />
-              {key}: {ore.count}
-            </div>
-          ))}
-          <button
-            onClick={sellOres}
-            className="bg-green-600 p-2 px-4 ml-2 cursor-pointer flex items-center gap-2 mt-4"
-          >
-            Sell all
-          </button>
+        <div className="flex justify-between">
+          <div>
+            {Object.entries(game.ores).map(([key, ore]) => (
+              <div key={key} className="flex items-center gap-2">
+                <OreIcon scale={2} oreName={ore.icon} />
+                {ore.icon}: {ore.count}
+              </div>
+            ))}
+          </div>
+
+          <div className="">
+            {Object.entries(game.smoltenOres).map(([key, ore]) => (
+              <div key={key} className="flex items-center gap-2">
+                <OreIcon scale={2} oreName={ore.icon} />
+                {ore.icon}: {ore.count}
+              </div>
+            ))}
+            <button
+              onClick={sellOres}
+              className="bg-green-600 p-2 px-4 ml-2 cursor-pointer flex items-center gap-2 mt-4"
+            >
+              Sell all smolten
+            </button>
+          </div>
         </div>
 
         <div className="pt-10">
@@ -592,6 +727,36 @@ export default function GameComponent() {
           <div className="flex items-center gap-2">
             Storage: {getTotalOreCount(game)}/{game.storage.cap}{" "}
             <Image src="/icons/ore_storage.png" alt="" width={20} height={20} />
+          </div>
+
+          <div className="mt-2 p-2 bg-gray-800 rounded">
+            {game.furnace.currentOre ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs">Smelting:</span>
+                  <OreIcon
+                    scale={1.5}
+                    oreName={game.ores[game.furnace.currentOre].icon}
+                  />
+                  <span className="text-xs">{game.furnace.currentOre}</span>
+                </div>
+                <div className="w-full bg-gray-700 h-4 rounded overflow-hidden">
+                  <div
+                    className="bg-green-500 h-full transition-all duration-100"
+                    style={{ width: `${smeltProgress * 100}%` }}
+                  />
+                </div>
+                <p className="text-xs opacity-80">
+                  {(
+                    ((1 - smeltProgress) * game.furnace.smeltDuration) /
+                    1000
+                  ).toFixed(1)}
+                  s remaining
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs opacity-60">🔥 Idle - Waiting for ore</p>
+            )}
           </div>
 
           <div className="max-h-96 overflow-y-scroll">
@@ -691,7 +856,12 @@ export default function GameComponent() {
 
             <div className="border border-white p-3 mt-5">
               <div className="flex items-center gap-2">
-                <p>Lvl.{game.storage.level}</p>
+                <p>
+                  Lvl.
+                  {game.storage.level == game.storage.maxLevel
+                    ? "Max"
+                    : game.storage.level}
+                </p>
                 <Image
                   src="/icons/ore_storage.png"
                   alt=""
@@ -702,13 +872,52 @@ export default function GameComponent() {
                 <button
                   onClick={upgradeStorage}
                   disabled={
-                    calculateUpgradeCost(game.storage.level) > game.player.coins
+                    calculateUpgradeCost(game.storage.level) >
+                      game.player.coins ||
+                    game.storage.level == game.storage.maxLevel
                   }
                   className="bg-green-600 p-2 px-4 ml-2 cursor-pointer flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   Upgrade {calculateUpgradeCost(game.storage.level)}{" "}
                   <Image src="/icons/coin.png" alt="" width={20} height={20} />
                 </button>
+              </div>
+            </div>
+
+            <div className="border border-white p-3 mt-5">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <p>
+                    Lvl.
+                    {game.furnace.level == game.furnace.maxLevel
+                      ? "Max"
+                      : game.furnace.level}
+                  </p>
+                  <Image
+                    src="/icons/furnace.png"
+                    alt=""
+                    width={40}
+                    height={40}
+                  />
+                  <p>Furnace</p>
+                  <button
+                    onClick={upgradeFurnace}
+                    disabled={
+                      calculateUpgradeCost(game.furnace.level) * 2 >
+                        game.player.coins ||
+                      game.furnace.level == game.furnace.maxLevel
+                    }
+                    className="bg-green-600 p-2 px-4 ml-2 cursor-pointer flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    Upgrade {calculateUpgradeCost(game.furnace.level) * 2}{" "}
+                    <Image
+                      src="/icons/coin.png"
+                      alt=""
+                      width={20}
+                      height={20}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
           </div>

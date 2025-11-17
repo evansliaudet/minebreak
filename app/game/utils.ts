@@ -5,10 +5,27 @@ export interface Worker {
   lastMineTime: number;
 }
 
+export type SmoltenOreKey =
+  | "smolten_ore1"
+  | "smolten_ore2"
+  | "smolten_ore3"
+  | "smolten_ore4"
+  | "smolten_ore5"
+  | "smolten_ore6";
+
+export interface Furnace {
+  level: number;
+  maxLevel: number;
+  currentOre: OreKey | null;
+  smeltStartTime: number | null;
+  smeltDuration: number;
+}
+
 export interface GameState {
   player: { coins: number };
   pickaxe: { level: number; speed: number };
-  storage: { cap: number; level: number };
+  storage: { cap: number; level: number; maxLevel: number };
+  furnace: Furnace;
   workerStamina: { level: number };
   workerCycle: { isResting: boolean; phaseStartTime: number };
   workers: Worker[];
@@ -16,25 +33,52 @@ export interface GameState {
     OreKey,
     { row: number; count: number; icon: string; price: number }
   >;
+  smoltenOres: Record<
+    SmoltenOreKey,
+    { count: number; icon: string; price: number }
+  >;
 }
 
 export const createDefaultGameState = (): GameState => ({
   player: { coins: 0 },
   pickaxe: { level: 0, speed: 800 },
-  storage: { cap: 50, level: 1 },
+  storage: { cap: 50, level: 1, maxLevel: 5 },
+  furnace: {
+    level: 1,
+    maxLevel: 10,
+    currentOre: null,
+    smeltStartTime: null,
+    smeltDuration: 3000,
+  },
   workerStamina: { level: 1 },
   workerCycle: { isResting: false, phaseStartTime: Date.now() },
   ores: {
-    ore1: { row: 0, count: 0, icon: "purple", price: 5 },
-    ore2: { row: 1, count: 0, icon: "green", price: 10 },
-    ore3: { row: 2, count: 0, icon: "black", price: 25 },
-    ore4: { row: 3, count: 0, icon: "red", price: 50 },
-    ore5: { row: 4, count: 0, icon: "diamond", price: 100 },
-    ore6: { row: 5, count: 0, icon: "red_shade", price: 250 },
+    ore1: { row: 0, count: 0, icon: "purple", price: 1 },
+    ore2: { row: 1, count: 0, icon: "green", price: 3 },
+    ore3: { row: 2, count: 0, icon: "black", price: 10 },
+    ore4: { row: 3, count: 0, icon: "red", price: 25 },
+    ore5: { row: 4, count: 0, icon: "diamond", price: 50 },
+    ore6: { row: 5, count: 0, icon: "red_shade", price: 120 },
+  },
+  smoltenOres: {
+    smolten_ore1: {
+      count: 0,
+      price: 1,
+      icon: "smolten_purple",
+    },
+    smolten_ore2: { count: 0, price: 3, icon: "smolten_green" },
+    smolten_ore3: { count: 0, price: 10, icon: "smolten_black" },
+    smolten_ore4: { count: 0, price: 25, icon: "smolten_red" },
+    smolten_ore5: {
+      count: 0,
+      price: 50,
+      icon: "smolten_diamond",
+    },
+    smolten_ore6: {
+      count: 0,
+      price: 120,
+      icon: "smolten_dark_red",
+    },
   },
   workers: [],
 });
-
-export const getTotalOreCount = (game: GameState) => {
-  return Object.values(game.ores).reduce((sum, ore) => sum + ore.count, 0);
-};
