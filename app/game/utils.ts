@@ -1,9 +1,8 @@
-export type OreKey = "ore1" | "ore2" | "ore3" | "ore4" | "ore5" | "ore6";
+import { Furnace } from "./furnace/utils";
+import WorkerType from "@/types/WorkerType";
+import { FURNACE_CONFIG, PICKAXE_CONFIG, STORAGE_CONFIG } from "./config";
 
-export interface Worker {
-  id: number;
-  lastMineTime: number;
-}
+export type OreKey = "ore1" | "ore2" | "ore3" | "ore4" | "ore5" | "ore6";
 
 export type SmoltenOreKey =
   | "smolten_ore1"
@@ -13,14 +12,6 @@ export type SmoltenOreKey =
   | "smolten_ore5"
   | "smolten_ore6";
 
-export interface Furnace {
-  level: number;
-  maxLevel: number;
-  currentOre: OreKey | null;
-  smeltStartTime: number | null;
-  smeltDuration: number;
-}
-
 export interface GameState {
   player: { coins: number };
   pickaxe: { level: number; speed: number };
@@ -28,7 +19,7 @@ export interface GameState {
   furnace: Furnace;
   workerStamina: { level: number };
   workerCycle: { isResting: boolean; phaseStartTime: number };
-  workers: Worker[];
+  workers: WorkerType[];
   ores: Record<
     OreKey,
     { row: number; count: number; icon: string; price: number }
@@ -41,14 +32,18 @@ export interface GameState {
 
 export const createDefaultGameState = (): GameState => ({
   player: { coins: 0 },
-  pickaxe: { level: 0, speed: 800 },
-  storage: { cap: 50, level: 1, maxLevel: 5 },
+  pickaxe: { level: 0, speed: PICKAXE_CONFIG.baseSpeed },
+  storage: {
+    cap: STORAGE_CONFIG.baseCap,
+    level: STORAGE_CONFIG.baseLevel,
+    maxLevel: STORAGE_CONFIG.maxLevel,
+  },
   furnace: {
     level: 1,
-    maxLevel: 10,
+    maxLevel: FURNACE_CONFIG.maxLevel,
     currentOre: null,
     smeltStartTime: null,
-    smeltDuration: 3000,
+    smeltDuration: FURNACE_CONFIG.baseSmeltDuration,
   },
   workerStamina: { level: 1 },
   workerCycle: { isResting: false, phaseStartTime: Date.now() },
@@ -82,3 +77,55 @@ export const createDefaultGameState = (): GameState => ({
   },
   workers: [],
 });
+
+export const loadSavedGame = (): GameState => {
+  if (typeof window === "undefined") return createDefaultGameState();
+
+  const saved = localStorage.getItem("gameState");
+  if (!saved) return createDefaultGameState();
+
+  try {
+    const parsed = JSON.parse(saved) as Partial<GameState>;
+
+    if (!parsed.workerStamina) parsed.workerStamina = { level: 1 };
+    if (!parsed.workerCycle) {
+      parsed.workerCycle = { isResting: false, phaseStartTime: Date.now() };
+    }
+    if (!parsed.furnace) {
+      parsed.furnace = {
+        level: 1,
+        maxLevel: FURNACE_CONFIG.maxLevel,
+        currentOre: null,
+        smeltStartTime: null,
+        smeltDuration: FURNACE_CONFIG.baseSmeltDuration,
+      };
+    }
+    if (!parsed.smoltenOres) {
+      parsed.smoltenOres = createDefaultGameState().smoltenOres;
+    }
+
+    parsed.workers =
+      parsed.workers?.map((worker) => ({
+        ...worker,
+        lastMineTime: worker.lastMineTime ?? 0,
+      })) ?? [];
+
+    const defaults = createDefaultGameState();
+
+    return {
+      ...defaults,
+      ...parsed,
+      ores: {
+        ...defaults.ores,
+        ...parsed.ores,
+      },
+      smoltenOres: {
+        ...defaults.smoltenOres,
+        ...parsed.smoltenOres,
+      },
+    };
+  } catch (error) {
+    console.warn("Failed to parse saved gameState:", error);
+    return createDefaultGameState();
+  }
+};

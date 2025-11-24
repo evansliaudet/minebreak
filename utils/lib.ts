@@ -1,11 +1,8 @@
 import { GameState } from "@/app/game/utils";
+import { UPGRADE_CONFIG } from "@/app/game/config";
 
 export const calculateUpgradeCost = (level: number) => {
-  return 200 + 700 * level;
-};
-
-export const calculateWorkerHireCost = (workerNb: number) => {
-  return 200 + 900 * workerNb;
+  return UPGRADE_CONFIG.baseCost + UPGRADE_CONFIG.costMultiplier * level;
 };
 
 export const getTotalOreCount = (game: GameState) => {
