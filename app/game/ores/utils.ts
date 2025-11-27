@@ -3,7 +3,7 @@ import { GameState, OreKey } from "../utils";
 import OreSprite from "@/types/OreSprite";
 import { getTotalOreCount } from "@/utils/lib";
 import OreType from "@/types/OreType";
-import { MINING_CONFIG } from "../config";
+import { LIGHTNING_CONFIG, MINING_CONFIG } from "../config";
 
 export interface MiningScene extends Phaser.Scene {
   oreStates: number;
@@ -93,7 +93,14 @@ export function mineOre(
     const oreType = scene.oreTypes[ore.typeRow];
     const oreKey = oreType.name as OreKey;
 
+    const shouldSpawnLightning =
+      Math.random() * 100 < LIGHTNING_CONFIG.spawnChance;
+
     setGame((prev: GameState) => {
+      const newLightning = shouldSpawnLightning
+        ? prev.player.lightning + 1
+        : prev.player.lightning;
+
       if (getTotalOreCount(prev) >= prev.storage.cap) return prev;
       return {
         ...prev,
@@ -103,6 +110,10 @@ export function mineOre(
             ...prev.ores[oreKey],
             count: prev.ores[oreKey].count + 1,
           },
+        },
+        player: {
+          ...prev.player,
+          lightning: newLightning,
         },
       };
     });
@@ -124,6 +135,26 @@ export function mineOre(
       duration: MINING_CONFIG.uiTextDuration,
       onComplete: () => txt.destroy(),
     });
+
+    if (shouldSpawnLightning) {
+      const lightningTxt = scene.add.text(
+        ore.x,
+        ore.y - MINING_CONFIG.uiTextOffset - 20,
+        "+1⚡",
+        {
+          font: "18px Arial",
+          color: "#ffcc00",
+        }
+      );
+
+      scene.tweens.add({
+        targets: lightningTxt,
+        y: ore.y - MINING_CONFIG.uiFloatHeight - 20,
+        alpha: 0,
+        duration: MINING_CONFIG.uiTextDuration,
+        onComplete: () => lightningTxt.destroy(),
+      });
+    }
 
     const newOre = getWeightedRandomOre(scene);
     ore.state = 0;

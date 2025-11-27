@@ -1,3 +1,4 @@
+import { Dispatch, SetStateAction } from "react";
 import { Furnace } from "./furnace/utils";
 import WorkerType from "@/types/WorkerType";
 import { FURNACE_CONFIG, PICKAXE_CONFIG, STORAGE_CONFIG } from "./config";
@@ -13,7 +14,7 @@ export type SmoltenOreKey =
   | "smolten_ore6";
 
 export interface GameState {
-  player: { coins: number };
+  player: { coins: number; lightning: number };
   pickaxe: { level: number; speed: number };
   storage: { cap: number; level: number; maxLevel: number };
   furnace: Furnace;
@@ -31,7 +32,7 @@ export interface GameState {
 }
 
 export const createDefaultGameState = (): GameState => ({
-  player: { coins: 0 },
+  player: { coins: 0, lightning: 1 },
   pickaxe: { level: 0, speed: PICKAXE_CONFIG.baseSpeed },
   storage: {
     cap: STORAGE_CONFIG.baseCap,
@@ -129,3 +130,24 @@ export const loadSavedGame = (): GameState => {
     return createDefaultGameState();
   }
 };
+
+export function applyStaminaBoost(
+  setGame: Dispatch<SetStateAction<GameState>>
+) {
+  setGame((prev) => {
+    if (prev.player.lightning > 0 && prev.workerCycle?.isResting) {
+      return {
+        ...prev,
+        player: {
+          ...prev.player,
+          lightning: prev.player.lightning - 1,
+        },
+        workerCycle: {
+          isResting: false,
+          phaseStartTime: Date.now(),
+        },
+      };
+    }
+    return prev;
+  });
+}

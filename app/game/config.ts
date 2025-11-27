@@ -8,6 +8,10 @@ export const MINING_CONFIG = {
   uiFloatHeight: 80,
 };
 
+export const LIGHTNING_CONFIG = {
+  spawnChance: 5,
+};
+
 export const STAMINA_CONFIG = {
   baseStaminaTime: 5,
   baseUpgradeCost: 2000,

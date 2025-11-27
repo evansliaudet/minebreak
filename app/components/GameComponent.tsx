@@ -19,6 +19,7 @@ import {
   StaminaCard,
   StorageCard,
   FurnaceCard,
+  StaminaBoostCard,
 } from "./UpgradeCards";
 
 loadSavedGame();
@@ -341,6 +342,7 @@ export default function GameComponent() {
 
         <div className="pt-10 space-y-5">
           <StatsPanel game={game} />
+          <StaminaBoostCard game={game} setGame={setGame} />
 
           <FurnaceTracker game={game} smeltProgress={smeltProgress} />
 

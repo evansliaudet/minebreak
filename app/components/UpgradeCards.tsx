@@ -7,7 +7,7 @@ import { upgradeStorage } from "../game/storage/utils";
 import { upgradeWorkerStamina } from "../game/worker/utils";
 import { upgradePickaxe } from "../game/pickaxe/utils";
 
-import { GameState } from "../game/utils";
+import { GameState, applyStaminaBoost } from "../game/utils";
 import { FURNACE_CONFIG, STAMINA_CONFIG } from "../game/config";
 
 interface UpgradeCardProps {
@@ -31,6 +31,31 @@ export function PickaxeCard({ game, setGame }: UpgradeCardProps) {
           <Image src="/icons/coin.png" alt="coin" width={20} height={20} />
         </button>
       </div>
+    </div>
+  );
+}
+
+export function StaminaBoostCard({ game, setGame }: UpgradeCardProps) {
+  const canBoost =
+    game.player.lightning > 0 && game.workerCycle && game.workerCycle.isResting;
+
+  const handleBoost = () => {
+    if (canBoost) {
+      applyStaminaBoost(setGame);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="text-2xl">⚡</div>
+      <p>Stamina Boost ({game.player.lightning})</p>
+      <button
+        onClick={handleBoost}
+        disabled={!canBoost}
+        className="bg-yellow-500 p-2 px-4 ml-2 cursor-pointer flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed hover:enabled:bg-yellow-400 transition-colors"
+      >
+        Boost
+      </button>
     </div>
   );
 }
