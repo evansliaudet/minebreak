@@ -1,7 +1,7 @@
 import { Dispatch, SetStateAction } from "react";
-import { GameState } from "../game/utils"; // Adjust path to match your structure
-import OreIcon from "./ui/OreIcon"; // Adjust path to match your structure
-import { sellOres } from "../game/ores/utils"; // Adjust path
+import { GameState } from "../game/utils";
+import OreIcon from "./ui/OreIcon";
+import { sellOres } from "../game/ores/utils";
 
 interface OreListProps {
   game: GameState;

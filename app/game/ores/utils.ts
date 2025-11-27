@@ -5,7 +5,6 @@ import { getTotalOreCount } from "@/utils/lib";
 import OreType from "@/types/OreType";
 import { MINING_CONFIG } from "../config";
 
-// Assuming MiningScene interface is defined here or imported
 export interface MiningScene extends Phaser.Scene {
   oreStates: number;
   oreTypes: OreType[];

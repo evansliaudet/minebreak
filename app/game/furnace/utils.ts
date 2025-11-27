@@ -4,7 +4,6 @@ import { calculateUpgradeCost } from "@/utils/lib";
 import { FURNACE_CONFIG, ORE_ORDER } from "../config";
 
 export const getNextOreToSmelt = (state: GameState): OreKey | null => {
-  // Use the ORE_ORDER from config
   for (const oreKey of ORE_ORDER) {
     if (state.ores[oreKey].count > 0) {
       return oreKey;

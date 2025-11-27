@@ -79,7 +79,6 @@ export function processWorkers(
 
   if (!cycle.isResting) {
     for (const worker of workerSnapshots) {
-      // Use constant for speed penalty
       if (
         now >
         worker.lastMineTime +

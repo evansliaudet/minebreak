@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 
-// Dynamically import GameComponent *with SSR disabled*
 const GameComponent = dynamic(() => import("../components/GameComponent"), {
   ssr: false,
 });

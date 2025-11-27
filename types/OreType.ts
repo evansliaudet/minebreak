@@ -2,5 +2,5 @@ export default interface OreType {
   row: number;
   name: string;
   weight: number;
-  icon: string; // link to correct icon
+  icon: string;
 }

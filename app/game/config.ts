@@ -8,6 +8,12 @@ export const MINING_CONFIG = {
   uiFloatHeight: 80,
 };
 
+export const STAMINA_CONFIG = {
+  baseStaminaTime: 5,
+  baseUpgradeCost: 2000,
+  upgradePowerMultiplier: 2,
+};
+
 export const WORKER_CONFIG = {
   maxWorkers: 5,
   baseHireCost: 200,
@@ -15,14 +21,14 @@ export const WORKER_CONFIG = {
   staminaBaseCost: 5000,
   baseWorkMinutes: 5,
   baseRestMinutes: 15,
-  pickaxeSpeedPenalty: 2, // Workers are 2x slower than base speed in your logic
+  pickaxeSpeedPenalty: 2,
 };
 
 export const FURNACE_CONFIG = {
-  baseSmeltDuration: 3000,
-  minSmeltDuration: 500,
-  levelSpeedMultiplier: 0.8, // Duration divides by this
-  upgradeCostMultiplier: 2,
+  baseSmeltDuration: 2000,
+  minSmeltDuration: 100,
+  levelSpeedMultiplier: 0.8,
+  upgradeCostMultiplier: 0.8,
   maxLevel: 10,
 };
 

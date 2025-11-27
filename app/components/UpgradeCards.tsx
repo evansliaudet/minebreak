@@ -8,6 +8,7 @@ import { upgradeWorkerStamina } from "../game/worker/utils";
 import { upgradePickaxe } from "../game/pickaxe/utils";
 
 import { GameState } from "../game/utils";
+import { FURNACE_CONFIG, STAMINA_CONFIG } from "../game/config";
 
 interface UpgradeCardProps {
   game: GameState;
@@ -35,7 +36,12 @@ export function PickaxeCard({ game, setGame }: UpgradeCardProps) {
 }
 
 export function StaminaCard({ game, setGame }: UpgradeCardProps) {
-  const cost = 5000 * Math.pow(2, game.workerStamina.level - 1);
+  const cost =
+    STAMINA_CONFIG.baseUpgradeCost *
+    Math.pow(
+      STAMINA_CONFIG.upgradePowerMultiplier,
+      game.workerStamina.level - 1
+    );
   return (
     <div className="border border-white p-3 mt-5">
       <div className="flex flex-col gap-2">
@@ -43,7 +49,8 @@ export function StaminaCard({ game, setGame }: UpgradeCardProps) {
           Worker Stamina Lvl.{game.workerStamina.level}
         </p>
         <p className="text-xs opacity-80">
-          Work: {game.workerStamina.level * 5}min | Rest: 15min
+          Work: {game.workerStamina.level * STAMINA_CONFIG.baseStaminaTime}min |
+          Rest: 15min
         </p>
         <button
           onClick={() => upgradeWorkerStamina(setGame)}
@@ -92,7 +99,9 @@ export function StorageCard({ game, setGame }: UpgradeCardProps) {
 }
 
 export function FurnaceCard({ game, setGame }: UpgradeCardProps) {
-  const cost = calculateUpgradeCost(game.furnace.level) * 2;
+  const cost =
+    calculateUpgradeCost(game.furnace.level) *
+    FURNACE_CONFIG.upgradeCostMultiplier;
   const isMax = game.furnace.level === game.furnace.maxLevel;
   return (
     <div className="border border-white p-3 mt-5">

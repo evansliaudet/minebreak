@@ -337,14 +337,11 @@ export default function GameComponent() {
     <div className="relative w-full h-full flex items-center justify-center gap-10">
       <div id="phaser-container" className="w-[800px] h-[800px]" />
       <div className="text-white font-mono space-y-1 bg-black/70 p-4 w-[450px]">
-        {/* Resources List */}
         <OreList game={game} setGame={setGame} />
 
         <div className="pt-10 space-y-5">
-          {/* Stats */}
           <StatsPanel game={game} />
 
-          {/* Active Furnace Progress */}
           <FurnaceTracker game={game} smeltProgress={smeltProgress} />
 
           {/* Scrollable Upgrades Area */}
